@@ -30,24 +30,12 @@ export interface EventRecord {
   updated_at: string
 }
 
-export async function getCurrentEvent(): Promise<EventRecord | null> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .schema('eggdrop')
-    .from('events')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    console.error('getCurrentEvent error', error)
-    return null
-  }
-  return data as EventRecord | null
+export interface EventListItem extends EventRecord {
+  team_count: number
+  resource_count: number
 }
 
-export interface SaveEventInput {
+export interface EventInput {
   name: string
   venue?: string | null
   date?: string | null
@@ -55,53 +43,81 @@ export interface SaveEventInput {
   timer_duration_minutes?: number | null
 }
 
-export async function saveEvent(input: SaveEventInput) {
-  if (!input.name?.trim()) {
-    return { error: 'Event name is required' }
+export async function listEvents(): Promise<EventListItem[]> {
+  const supabase = createAdminClient()
+  const { data: events, error } = await supabase
+    .schema('eggdrop')
+    .from('events')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error || !events) {
+    console.error('listEvents error', error)
+    return []
+  }
+  if (events.length === 0) return []
+
+  const ids = events.map((e) => e.id)
+  const [teamsRes, resourcesRes] = await Promise.all([
+    supabase.schema('eggdrop').from('teams').select('event_id').in('event_id', ids),
+    supabase.schema('eggdrop').from('resources').select('event_id').in('event_id', ids),
+  ])
+
+  const teamCounts = new Map<string, number>()
+  for (const row of teamsRes.data ?? []) {
+    teamCounts.set(row.event_id, (teamCounts.get(row.event_id) ?? 0) + 1)
+  }
+  const resourceCounts = new Map<string, number>()
+  for (const row of resourcesRes.data ?? []) {
+    resourceCounts.set(row.event_id, (resourceCounts.get(row.event_id) ?? 0) + 1)
   }
 
-  const supabase = createAdminClient()
-  const current = await getCurrentEvent()
+  return events.map((e) => ({
+    ...(e as EventRecord),
+    team_count: teamCounts.get(e.id) ?? 0,
+    resource_count: resourceCounts.get(e.id) ?? 0,
+  }))
+}
 
+export async function getEvent(id: string): Promise<EventRecord | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .schema('eggdrop')
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) {
+    console.error('getEvent error', error)
+    return null
+  }
+  return (data as EventRecord) ?? null
+}
+
+export async function createEvent(input: EventInput) {
+  if (!input.name?.trim()) return { error: 'Event name is required' }
+
+  const supabase = createAdminClient()
   const payload = {
     name: input.name.trim(),
     venue: input.venue?.trim() || null,
     date: input.date || null,
     drop_height_meters: input.drop_height_meters ?? 3.0,
     timer_duration_minutes: input.timer_duration_minutes ?? 30,
+    current_phase: 'setup',
   }
 
-  if (current) {
-    const { error } = await supabase
-      .schema('eggdrop')
-      .from('events')
-      .update(payload)
-      .eq('id', current.id)
-
-    if (error) {
-      console.error('saveEvent update error', error)
-      return {
-        error: `Failed to save event: ${error.message} (code: ${error.code || 'n/a'})`,
-      }
-    }
-
-    revalidatePath('/admin')
-    revalidatePath('/admin/setup')
-    return { success: true, eventId: current.id, created: false }
-  }
-
-  const { data: created, error: insertError } = await supabase
+  const { data: created, error } = await supabase
     .schema('eggdrop')
     .from('events')
-    .insert({ ...payload, current_phase: 'setup' })
+    .insert(payload)
     .select('id')
     .single()
 
-  if (insertError || !created) {
-    console.error('saveEvent insert error', insertError)
-    return {
-      error: `Failed to create event: ${insertError?.message || 'unknown'} (code: ${insertError?.code || 'n/a'}, hint: ${insertError?.hint || 'n/a'})`,
-    }
+  if (error || !created) {
+    console.error('createEvent error', error)
+    return { error: `Failed to create event: ${error?.message ?? 'unknown'}` }
   }
 
   const eventId = created.id as string
@@ -126,7 +142,48 @@ export async function saveEvent(input: SaveEventInput) {
     )
 
   revalidatePath('/admin')
-  revalidatePath('/admin/setup')
-  revalidatePath('/admin/resources')
-  return { success: true, eventId, created: true }
+  return { success: true as const, eventId }
+}
+
+export async function updateEvent(id: string, input: EventInput) {
+  if (!input.name?.trim()) return { error: 'Event name is required' }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .schema('eggdrop')
+    .from('events')
+    .update({
+      name: input.name.trim(),
+      venue: input.venue?.trim() || null,
+      date: input.date || null,
+      drop_height_meters: input.drop_height_meters ?? 3.0,
+      timer_duration_minutes: input.timer_duration_minutes ?? 30,
+    })
+    .eq('id', id)
+
+  if (error) {
+    console.error('updateEvent error', error)
+    return { error: `Failed to update event: ${error.message}` }
+  }
+
+  revalidatePath('/admin')
+  revalidatePath(`/admin/events/${id}`)
+  return { success: true as const }
+}
+
+export async function deleteEvent(id: string) {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .schema('eggdrop')
+    .from('events')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    console.error('deleteEvent error', error)
+    return { error: `Failed to delete event: ${error.message}` }
+  }
+
+  revalidatePath('/admin')
+  return { success: true as const }
 }

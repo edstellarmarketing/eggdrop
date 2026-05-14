@@ -20,6 +20,7 @@ export default function AdminLayout({
               height={28}
               priority
               className="h-7 w-auto"
+              style={{ width: 'auto', height: '1.75rem' }}
             />
             <span className="text-zinc-300 select-none">|</span>
             <span className="text-sm font-medium text-zinc-600 tracking-wide">Console</span>

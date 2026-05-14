@@ -2,8 +2,8 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
-import { getCurrentEvent } from './events'
 import { sendTeamJoinCode } from '@/lib/email-service'
+import type { ParticipantInput } from '@/lib/participants'
 
 export interface TeamRow {
   id: string
@@ -41,27 +41,21 @@ async function uniqueJoinCode(supabase: ReturnType<typeof createAdminClient>): P
   throw new Error('Could not generate a unique join code')
 }
 
-export async function getTeams(): Promise<{ event: { id: string; name: string } | null; teams: TeamRow[] }> {
-  const event = await getCurrentEvent()
-  if (!event) return { event: null, teams: [] }
-
+export async function listTeams(eventId: string): Promise<TeamRow[]> {
   const supabase = createAdminClient()
 
   const { data: teams, error } = await supabase
     .schema('eggdrop')
     .from('teams')
     .select('id, event_id, name, color, join_code, status, created_at')
-    .eq('event_id', event.id)
+    .eq('event_id', eventId)
     .order('created_at', { ascending: true })
 
   if (error || !teams) {
-    console.error('getTeams error', error)
-    return { event: { id: event.id, name: event.name }, teams: [] }
+    console.error('listTeams error', error)
+    return []
   }
-
-  if (teams.length === 0) {
-    return { event: { id: event.id, name: event.name }, teams: [] }
-  }
+  if (teams.length === 0) return []
 
   const teamIds = teams.map((t) => t.id)
 
@@ -92,7 +86,7 @@ export async function getTeams(): Promise<{ event: { id: string; name: string } 
     })
   }
 
-  const rows: TeamRow[] = teams.map((t) => {
+  return teams.map((t) => {
     const wallet = walletByTeam.get(t.id)
     return {
       id: t.id,
@@ -105,26 +99,80 @@ export async function getTeams(): Promise<{ event: { id: string; name: string } 
       total_budget: wallet?.total_budget ?? 0,
       spent_amount: wallet?.spent_amount ?? 0,
       remaining_balance: wallet?.remaining_balance ?? 0,
-    }
+    } as TeamRow
   })
+}
 
-  return { event: { id: event.id, name: event.name }, teams: rows }
+export async function getTeam(teamId: string): Promise<TeamRow | null> {
+  const supabase = createAdminClient()
+  const { data: team } = await supabase
+    .schema('eggdrop')
+    .from('teams')
+    .select('id, event_id, name, color, join_code, status')
+    .eq('id', teamId)
+    .maybeSingle()
+  if (!team) return null
+
+  const [membersRes, walletRes] = await Promise.all([
+    supabase
+      .schema('eggdrop')
+      .from('team_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('team_id', teamId),
+    supabase
+      .schema('eggdrop')
+      .from('team_wallets')
+      .select('total_budget, spent_amount, remaining_balance')
+      .eq('team_id', teamId)
+      .maybeSingle(),
+  ])
+
+  return {
+    id: team.id,
+    event_id: team.event_id,
+    name: team.name,
+    color: team.color,
+    join_code: team.join_code,
+    status: team.status,
+    member_count: membersRes.count ?? 0,
+    total_budget: Number(walletRes.data?.total_budget) || 0,
+    spent_amount: Number(walletRes.data?.spent_amount) || 0,
+    remaining_balance: Number(walletRes.data?.remaining_balance) || 0,
+  }
 }
 
 export interface CreateTeamInput {
+  eventId: string
   name: string
   color?: string | null
   budget: number
-  captainEmail?: string | null
+  participants?: ParticipantInput[]
+}
+
+function normalizeParticipant(p: ParticipantInput) {
+  return {
+    full_name: p.full_name.trim(),
+    designation: p.designation?.trim() || null,
+    email: p.email?.trim() || null,
+    avatar_url: p.avatar_url?.trim() || null,
+    role: p.role ?? 'member',
+  }
 }
 
 export async function createTeam(input: CreateTeamInput) {
-  const event = await getCurrentEvent()
-  if (!event) return { error: 'No event exists yet. Create the event in Setup first.' }
-
+  if (!input.eventId) return { error: 'Missing eventId' }
   if (!input.name?.trim()) return { error: 'Team name is required' }
   if (!Number.isFinite(input.budget) || input.budget < 0) {
     return { error: 'Budget must be a non-negative number' }
+  }
+
+  const participants = (input.participants ?? []).filter((p) => p.full_name?.trim())
+  for (const p of participants) {
+    if (!p.full_name?.trim()) return { error: 'Every participant needs a name' }
+  }
+  const captains = participants.filter((p) => p.role === 'captain').length
+  if (captains > 1) {
+    return { error: 'Only one participant can be captain' }
   }
 
   const supabase = createAdminClient()
@@ -140,7 +188,7 @@ export async function createTeam(input: CreateTeamInput) {
     .schema('eggdrop')
     .from('teams')
     .insert({
-      event_id: event.id,
+      event_id: input.eventId,
       name: input.name.trim(),
       color: input.color?.trim() || null,
       join_code: joinCode,
@@ -150,7 +198,7 @@ export async function createTeam(input: CreateTeamInput) {
     .single()
 
   if (teamErr || !team) {
-    console.error('createTeam team insert error', teamErr)
+    console.error('createTeam insert error', teamErr)
     return {
       error: `Failed to create team: ${teamErr?.message || 'unknown'} (code: ${teamErr?.code || 'n/a'})`,
     }
@@ -169,36 +217,59 @@ export async function createTeam(input: CreateTeamInput) {
   if (walletErr) {
     console.error('createTeam wallet insert error', walletErr)
     return {
-      error: `Team row created but wallet failed: ${walletErr.message} (code: ${walletErr.code || 'n/a'})`,
+      error: `Team created but wallet failed: ${walletErr.message}`,
     }
   }
 
+  let participantsInserted = 0
+  if (participants.length > 0) {
+    const rows = participants.map((p) => ({
+      team_id: team.id,
+      ...normalizeParticipant(p),
+    }))
+    const { error: pErr } = await supabase
+      .schema('eggdrop')
+      .from('team_members')
+      .insert(rows)
+    if (pErr) {
+      console.error('createTeam participants insert error', pErr)
+      return {
+        error: `Team created but participants failed: ${pErr.message}`,
+      }
+    }
+    participantsInserted = rows.length
+  }
+
+  const captain = participants.find((p) => p.role === 'captain')
+  const captainEmail = captain?.email?.trim() || null
+
   let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
   let emailError: string | undefined
-  if (input.captainEmail?.trim()) {
+  if (captainEmail) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     try {
-      const result = await sendTeamJoinCode(input.captainEmail.trim(), team.name, team.join_code ?? '', appUrl)
+      const result = await sendTeamJoinCode(captainEmail, team.name, team.join_code ?? '', appUrl)
       if (result && (result.success === true || result.status === 'success')) {
         emailStatus = 'sent'
       } else {
         emailStatus = 'failed'
         emailError = result?.error || result?.message || JSON.stringify(result)
-        console.error('sendTeamJoinCode returned failure', result)
       }
     } catch (err) {
       emailStatus = 'failed'
       emailError = (err as Error).message
-      console.error('sendTeamJoinCode threw', err)
     }
   }
 
-  revalidatePath('/admin')
-  revalidatePath('/admin/teams')
+  revalidatePath(`/admin/events/${input.eventId}`)
+  revalidatePath(`/admin/events/${input.eventId}/teams`)
   return {
-    success: true,
+    success: true as const,
     teamId: team.id,
+    teamName: team.name,
     joinCode: team.join_code,
+    participantsInserted,
+    captainEmail,
     emailStatus,
     emailError,
   }
@@ -219,6 +290,16 @@ export async function updateTeam(input: UpdateTeamInput) {
 
   const supabase = createAdminClient()
 
+  const { data: existing, error: lookupErr } = await supabase
+    .schema('eggdrop')
+    .from('teams')
+    .select('event_id')
+    .eq('id', input.teamId)
+    .maybeSingle()
+  if (lookupErr || !existing) {
+    return { error: 'Team not found' }
+  }
+
   const { error: teamErr } = await supabase
     .schema('eggdrop')
     .from('teams')
@@ -229,9 +310,7 @@ export async function updateTeam(input: UpdateTeamInput) {
     .eq('id', input.teamId)
 
   if (teamErr) {
-    return {
-      error: `Failed to update team: ${teamErr.message} (code: ${teamErr.code || 'n/a'})`,
-    }
+    return { error: `Failed to update team: ${teamErr.message}` }
   }
 
   const { data: wallet } = await supabase
@@ -254,18 +333,23 @@ export async function updateTeam(input: UpdateTeamInput) {
     })
 
   if (walletErr) {
-    return {
-      error: `Team updated but wallet failed: ${walletErr.message}`,
-    }
+    return { error: `Team updated but wallet failed: ${walletErr.message}` }
   }
 
-  revalidatePath('/admin')
-  revalidatePath('/admin/teams')
-  return { success: true }
+  revalidatePath(`/admin/events/${existing.event_id}`)
+  revalidatePath(`/admin/events/${existing.event_id}/teams`)
+  return { success: true as const }
 }
 
 export async function deleteTeam(teamId: string) {
   const supabase = createAdminClient()
+  const { data: existing } = await supabase
+    .schema('eggdrop')
+    .from('teams')
+    .select('event_id')
+    .eq('id', teamId)
+    .maybeSingle()
+
   const { error } = await supabase
     .schema('eggdrop')
     .from('teams')
@@ -273,12 +357,12 @@ export async function deleteTeam(teamId: string) {
     .eq('id', teamId)
 
   if (error) {
-    return {
-      error: `Failed to delete team: ${error.message} (code: ${error.code || 'n/a'})`,
-    }
+    return { error: `Failed to delete team: ${error.message}` }
   }
 
-  revalidatePath('/admin')
-  revalidatePath('/admin/teams')
-  return { success: true }
+  if (existing) {
+    revalidatePath(`/admin/events/${existing.event_id}`)
+    revalidatePath(`/admin/events/${existing.event_id}/teams`)
+  }
+  return { success: true as const }
 }
