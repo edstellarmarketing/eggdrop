@@ -20,32 +20,37 @@ export default function UpdatePasswordPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    let resolved = false
+    async function init() {
+      const hash = window.location.hash.startsWith('#')
+        ? window.location.hash.slice(1)
+        : window.location.hash
+      const params = new URLSearchParams(hash)
+      const access_token = params.get('access_token')
+      const refresh_token = params.get('refresh_token')
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        resolved = true
+      if (access_token && refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        })
+        if (sessionError) {
+          setError('This password reset link is invalid or has expired. Please request a new one.')
+          return
+        }
+        window.history.replaceState(null, '', window.location.pathname)
         setReady(true)
+        return
       }
-    })
 
-    supabase.auth.getSession().then(({ data }) => {
+      const { data } = await supabase.auth.getSession()
       if (data?.session?.user) {
-        resolved = true
         setReady(true)
-      }
-    })
-
-    const timeout = setTimeout(() => {
-      if (!resolved) {
+      } else {
         setError('This password reset link is invalid or has expired. Please request a new one.')
       }
-    }, 2000)
-
-    return () => {
-      clearTimeout(timeout)
-      subscription.subscription.unsubscribe()
     }
+
+    init()
   }, [supabase])
 
   async function handleSubmit(e: React.FormEvent) {
