@@ -74,6 +74,11 @@ export function TeamsManager({
       return
     }
     toast.success(`Team created (join code: ${result.joinCode})`)
+    if (result.emailStatus === 'sent') {
+      toast.success(`Join code emailed to ${captainEmail.trim()}`)
+    } else if (result.emailStatus === 'failed') {
+      toast.error(`Team created but email failed: ${result.emailError ?? 'unknown error'}`)
+    }
     resetCreateForm()
     setCreateOpen(false)
     router.refresh()

@@ -173,18 +173,35 @@ export async function createTeam(input: CreateTeamInput) {
     }
   }
 
+  let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
+  let emailError: string | undefined
   if (input.captainEmail?.trim()) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     try {
-      await sendTeamJoinCode(input.captainEmail.trim(), team.name, team.join_code ?? '', appUrl)
+      const result = await sendTeamJoinCode(input.captainEmail.trim(), team.name, team.join_code ?? '', appUrl)
+      if (result && (result.success === true || result.status === 'success')) {
+        emailStatus = 'sent'
+      } else {
+        emailStatus = 'failed'
+        emailError = result?.error || result?.message || JSON.stringify(result)
+        console.error('sendTeamJoinCode returned failure', result)
+      }
     } catch (err) {
-      console.error('sendTeamJoinCode error', err)
+      emailStatus = 'failed'
+      emailError = (err as Error).message
+      console.error('sendTeamJoinCode threw', err)
     }
   }
 
   revalidatePath('/admin')
   revalidatePath('/admin/teams')
-  return { success: true, teamId: team.id, joinCode: team.join_code }
+  return {
+    success: true,
+    teamId: team.id,
+    joinCode: team.join_code,
+    emailStatus,
+    emailError,
+  }
 }
 
 export interface UpdateTeamInput {

@@ -1,24 +1,33 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { joinTeamAction } from './actions'
 
 export default function TeamJoinPage() {
+  return (
+    <Suspense fallback={null}>
+      <TeamJoinForm />
+    </Suspense>
+  )
+}
+
+function TeamJoinForm() {
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const autoTried = useRef(false)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function submitCode(value: string) {
     setError(null)
     setLoading(true)
 
-    const result = await joinTeamAction(code)
+    const result = await joinTeamAction(value)
 
     if (result?.error) {
       setError(result.error)
@@ -26,6 +35,21 @@ export default function TeamJoinPage() {
     } else {
       router.push('/team')
     }
+  }
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('code')?.toUpperCase().trim()
+    if (fromUrl && !autoTried.current) {
+      autoTried.current = true
+      setCode(fromUrl)
+      submitCode(fromUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    await submitCode(code)
   }
 
   return (

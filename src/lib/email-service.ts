@@ -82,6 +82,7 @@ export async function sendPasswordReset(email: string, resetUrl: string) {
  * Specifically sends Team Join Codes
  */
 export async function sendTeamJoinCode(email: string, teamName: string, joinCode: string, appUrl: string) {
+  const joinUrl = `${appUrl}/team/join?code=${encodeURIComponent(joinCode)}`
   return sendEmail({
     to: email,
     subject: `Join Code for ${teamName}`,
@@ -89,13 +90,19 @@ export async function sendTeamJoinCode(email: string, teamName: string, joinCode
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
         <h2 style="color: #10b981;">Ready to Build?</h2>
         <p>Your team, <strong>${teamName}</strong>, is registered for the Egg Drop challenge.</p>
-        <p>Use the following code to join your team console:</p>
-        <div style="margin: 20px 0; padding: 20px; background-color: #f4f4f5; border-radius: 8px; text-align: center;">
+        <p>Click the button below to join your team console — your code is already filled in for you:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${joinUrl}" style="background-color: #18181b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Join Team Console</a>
+        </div>
+        <p style="text-align: center; font-size: 14px; color: #666; margin-top: -10px;">or paste this link in your browser:</p>
+        <p style="text-align: center; word-break: break-all; font-size: 13px; color: #555;">
+          <a href="${joinUrl}" style="color: #2563eb;">${joinUrl}</a>
+        </p>
+        <p style="margin-top: 30px;">If you'd rather enter the code manually, go to <a href="${appUrl}/team/join" style="color: #2563eb;">${appUrl}/team/join</a> and enter:</p>
+        <div style="margin: 16px 0; padding: 20px; background-color: #f4f4f5; border-radius: 8px; text-align: center;">
           <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #18181b;">${joinCode}</span>
         </div>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${appUrl}/team/join" style="background-color: #18181b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Enter Code Here</a>
-        </div>
+        <p style="font-size: 13px; color: #666;">Share this link or code with your teammates so they can join the same team from their own devices.</p>
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
         <p style="font-size: 12px; color: #999;">Egg Drop Console | Powered by Edstellar</p>
       </div>
