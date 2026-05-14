@@ -80,7 +80,9 @@ export async function saveEvent(input: SaveEventInput) {
 
     if (error) {
       console.error('saveEvent update error', error)
-      return { error: 'Failed to save event' }
+      return {
+        error: `Failed to save event: ${error.message} (code: ${error.code || 'n/a'})`,
+      }
     }
 
     revalidatePath('/admin')
@@ -97,7 +99,9 @@ export async function saveEvent(input: SaveEventInput) {
 
   if (insertError || !created) {
     console.error('saveEvent insert error', insertError)
-    return { error: 'Failed to create event' }
+    return {
+      error: `Failed to create event: ${insertError?.message || 'unknown'} (code: ${insertError?.code || 'n/a'}, hint: ${insertError?.hint || 'n/a'})`,
+    }
   }
 
   const eventId = created.id as string
