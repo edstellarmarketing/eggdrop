@@ -1,13 +1,34 @@
 'use client'
 
+import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Gavel, Mail } from 'lucide-react'
+import { Gavel, Mail, Loader2 } from 'lucide-react'
+import { inviteJudgeAction } from '@/app/actions/admin-invites'
+import { toast } from 'sonner'
 
 export default function RulesAndJudgePage() {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const eventId = 'active-event-id'
+
+  async function handleInvite() {
+    if (!email) return
+    setLoading(true)
+    const result = await inviteJudgeAction(eventId, email)
+    
+    if (result.success) {
+      toast.success(`Invitation sent to ${email}`)
+      setEmail('')
+    } else {
+      toast.error(result.error)
+    }
+    setLoading(false)
+  }
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8">
@@ -56,10 +77,19 @@ export default function RulesAndJudgePage() {
             <div className="flex gap-4">
               <div className="flex-1 space-y-2">
                 <Label htmlFor="judge-email">Judge Email</Label>
-                <Input id="judge-email" type="email" placeholder="judge@company.com" />
+                <Input 
+                  id="judge-email" 
+                  type="email" 
+                  placeholder="judge@company.com" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
               <div className="flex items-end">
-                <Button>Send Invitation</Button>
+                <Button onClick={handleInvite} disabled={loading}>
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Send Invitation
+                </Button>
               </div>
             </div>
             <div className="pt-4 border-t text-sm text-muted-foreground">
