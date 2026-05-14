@@ -31,7 +31,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [magicLoading, setMagicLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const supabase = createClient()
@@ -51,25 +50,6 @@ export default function LoginPage() {
       return
     }
     router.push(role === 'admin' ? '/admin' : '/judge')
-  }
-
-  async function handleMagicLink() {
-    if (!email) {
-      setError('Enter your email above first.')
-      return
-    }
-    setMagicLoading(true)
-    setError(null)
-    setMessage(null)
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    })
-
-    if (error) setError(error.message)
-    else setMessage('Magic link sent — check your inbox.')
-    setMagicLoading(false)
   }
 
   const copy = ROLE_COPY[role]
@@ -233,30 +213,6 @@ export default function LoginPage() {
                     Sign in
                   </Button>
                 </form>
-
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-zinc-200" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase tracking-wider">
-                    <span className="bg-white px-3 text-zinc-400">or</span>
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-11"
-                  onClick={handleMagicLink}
-                  disabled={magicLoading}
-                >
-                  {magicLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <Mail className="w-4 h-4 mr-2" />
-                  )}
-                  Send magic link
-                </Button>
               </CardContent>
             </Card>
 
