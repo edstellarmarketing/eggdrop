@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -88,6 +89,11 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Logging in...' : 'Login with Password'}
             </Button>
+            <div className="text-center">
+              <Link href="/forgot-password" className="text-sm text-zinc-500 hover:text-zinc-900">
+                Forgot password?
+              </Link>
+            </div>
           </form>
           
           <div className="relative">
