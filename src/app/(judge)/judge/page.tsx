@@ -171,7 +171,7 @@ export default function JudgeConsole() {
                   </div>
                   <Slider 
                     value={[innovation]} 
-                    onValueChange={(v) => setInnovation(v[0])} 
+                    onValueChange={(v) => setInnovation(Array.isArray(v) ? v[0] : v)} 
                     max={20} 
                     step={1} 
                   />
@@ -185,7 +185,7 @@ export default function JudgeConsole() {
                   </div>
                   <Slider 
                     value={[presentation]} 
-                    onValueChange={(v) => setPresentation(v[0])} 
+                    onValueChange={(v) => setPresentation(Array.isArray(v) ? v[0] : v)} 
                     max={5} 
                     step={1} 
                   />

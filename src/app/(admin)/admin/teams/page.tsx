@@ -41,11 +41,9 @@ export default function TeamsManagerPage() {
         </div>
         
         <Dialog>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Team
-            </Button>
+          <DialogTrigger render={<Button className="flex items-center gap-2" />}>
+            <Plus className="w-4 h-4" />
+            Add Team
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>

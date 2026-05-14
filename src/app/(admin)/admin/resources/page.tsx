@@ -36,11 +36,9 @@ export default function ResourcesCatalogPage() {
         </div>
         
         <Dialog>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Item
-            </Button>
+          <DialogTrigger render={<Button className="flex items-center gap-2" />}>
+            <Plus className="w-4 h-4" />
+            Add Item
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
