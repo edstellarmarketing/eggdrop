@@ -23,7 +23,7 @@ export async function resetPasswordAction(email: string) {
     type: 'recovery',
     email: normalized,
     options: {
-      redirectTo: `${appUrl}/auth/callback?next=/auth/update-password`,
+      redirectTo: `${appUrl}/auth/update-password`,
     },
   })
 

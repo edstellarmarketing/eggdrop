@@ -20,13 +20,32 @@ export default function UpdatePasswordPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data, error }) => {
-      if (error || !data?.user) {
-        setError('This password reset link is invalid or has expired. Please request a new one.')
-      } else {
+    let resolved = false
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        resolved = true
         setReady(true)
       }
     })
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session?.user) {
+        resolved = true
+        setReady(true)
+      }
+    })
+
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        setError('This password reset link is invalid or has expired. Please request a new one.')
+      }
+    }, 2000)
+
+    return () => {
+      clearTimeout(timeout)
+      subscription.subscription.unsubscribe()
+    }
   }, [supabase])
 
   async function handleSubmit(e: React.FormEvent) {
